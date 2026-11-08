@@ -1,20 +1,25 @@
 # ============================================================
-# 2. Build APK Android
+# 2. Build APK Android (con backend remoto)
 # ============================================================
-# Descomprime el ZIP y genera el APK (debug).
+# Descomprime el ZIP y genera el APK apuntando a un backend.
 # ============================================================
 
 name: 2 - Build APK Android
 
 on:
   workflow_dispatch:
+    inputs:
+      nova_remote_url:
+        description: 'URL del backend remoto (ej: https://tu-app.railway.app)'
+        required: false
+        default: ''
+        type: string
 
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.18.0'
   JAVA_VERSION: '21'
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
-  NOVA_REMOTE_URL: ''
 
 jobs:
   build-apk:
@@ -93,15 +98,22 @@ jobs:
           ls -la dist/ || true
           ls -la dist/public/ || true
 
-      - name: Sync Capacitor
+      - name: Sync Capacitor (con backend remoto)
         working-directory: project
         env:
-          NOVA_REMOTE_URL: ${{ env.NOVA_REMOTE_URL }}
+          NOVA_REMOTE_URL: ${{ inputs.nova_remote_url }}
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
+          if [ -n "$NOVA_REMOTE_URL" ]; then
+            echo "APK apuntará al backend: $NOVA_REMOTE_URL"
+          else
+            echo "AVISO: NOVA_REMOTE_URL vacío → APK usará assets locales (sin IA remota)"
+          fi
           pnpm exec cap sync android
           echo "Capacitor sync OK"
+          echo "--- capacitor.config.json ---"
+          cat android/app/src/main/assets/capacitor.config.json || true
 
       - name: Generar APK (debug)
         working-directory: project/android
@@ -127,6 +139,11 @@ jobs:
           echo "========================================"
           echo "  APK generado correctamente"
           echo "========================================"
+          if [ -n "${{ inputs.nova_remote_url }}" ]; then
+            echo "Backend remoto: ${{ inputs.nova_remote_url }}"
+          else
+            echo "Backend remoto: (ninguno - solo local)"
+          fi
           echo "Descarga el artifact: nova-codemind-apk"
           echo "Archivo: app-debug.apk"
           echo "========================================"
