@@ -12,7 +12,8 @@ on:
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.18.0'
-  # Pon aquí tu backend si quieres que el APK use internet/IA
+  JAVA_VERSION: '17'
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk
   NOVA_REMOTE_URL: ''
 
 jobs:
@@ -29,7 +30,6 @@ jobs:
         run: |
           echo "Descomprimiendo nova-codemind-completo-v2.zip..."
           unzip -q nova-codemind-completo-v2.zip -d project
-          echo "Contenido:"
           ls -la project/
 
       - name: Setup Node.js
@@ -46,29 +46,51 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-
-      - name: Aceptar licencias Android (extra)
+      - name: Instalar Android command-line tools
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          cd /tmp
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+          echo "Android cmdline-tools instalado"
+
+      - name: Aceptar licencias e instalar SDK
+        run: |
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+
+          # Aceptar todas las licencias
+          yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses >/dev/null 2>&1 || true
+
           # Instalar componentes necesarios
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+          sdkmanager --sdk_root=$ANDROID_HOME \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - name: Instalar dependencias
-        working-directory: project
+          echo "SDK instalado en $ANDROID_HOME"
+          ls -la $ANDROID_HOME/
+
+      - name: Configurar variables de entorno Android
         run: |
-          pnpm install --no-frozen-lockfile
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+
+      - name: Instalar dependencias del proyecto
+        working-directory: project
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build del proyecto
         working-directory: project
         run: |
           pnpm build
-          echo "Build terminado. Contenido de dist:"
+          echo "=== dist/ ==="
           ls -la dist/ || true
           ls -la dist/public/ || true
 
@@ -76,16 +98,21 @@ jobs:
         working-directory: project
         env:
           NOVA_REMOTE_URL: ${{ env.NOVA_REMOTE_URL }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
           pnpm exec cap sync android
           echo "Capacitor sync OK"
 
       - name: Generar APK (debug)
         working-directory: project/android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
-          echo "APK generado:"
+          echo "=== APK generado ==="
           find app/build/outputs/apk -name "*.apk" -ls
 
       - name: Subir APK
