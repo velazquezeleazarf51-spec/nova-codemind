@@ -7,19 +7,19 @@
 name: 2 - Build APK Android
 
 on:
-  workflow_dispatch:          # Ejecutar manualmente
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.18.0'
   # Pon aquí tu backend si quieres que el APK use internet/IA
-  NOVA_REMOTE_URL: ''         # Ejemplo: 'https://tu-backend.railway.app'
+  NOVA_REMOTE_URL: ''
 
 jobs:
   build-apk:
     name: Generar APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repositorio
@@ -29,6 +29,7 @@ jobs:
         run: |
           echo "Descomprimiendo nova-codemind-completo-v2.zip..."
           unzip -q nova-codemind-completo-v2.zip -d project
+          echo "Contenido:"
           ls -la project/
 
       - name: Setup Node.js
@@ -49,26 +50,41 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+
+      - name: Aceptar licencias Android (extra)
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          # Instalar componentes necesarios
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
 
       - name: Instalar dependencias
         working-directory: project
-        run: pnpm install --frozen-lockfile || pnpm install
+        run: |
+          pnpm install --no-frozen-lockfile
 
       - name: Build del proyecto
         working-directory: project
-        run: pnpm build
+        run: |
+          pnpm build
+          echo "Build terminado. Contenido de dist:"
+          ls -la dist/ || true
+          ls -la dist/public/ || true
 
       - name: Sync Capacitor
         working-directory: project
         env:
           NOVA_REMOTE_URL: ${{ env.NOVA_REMOTE_URL }}
-        run: pnpm exec cap sync android
+        run: |
+          pnpm exec cap sync android
+          echo "Capacitor sync OK"
 
       - name: Generar APK (debug)
         working-directory: project/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
           echo "APK generado:"
           find app/build/outputs/apk -name "*.apk" -ls
 

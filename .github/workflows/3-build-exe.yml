@@ -7,7 +7,7 @@
 name: 3 - Build EXE Windows
 
 on:
-  workflow_dispatch:          # Ejecutar manualmente
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '22'
@@ -17,7 +17,7 @@ jobs:
   build-exe:
     name: Generar EXE
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repositorio
@@ -43,19 +43,47 @@ jobs:
       - name: Instalar dependencias
         working-directory: project
         shell: bash
-        run: pnpm install --frozen-lockfile || pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build estático del frontend
         working-directory: project
         shell: bash
-        run: pnpm build:static || pnpm exec vite build
+        run: |
+          pnpm build:static || pnpm exec vite build
+          echo "Build terminado. Contenido de dist:"
+          ls -la dist/ || true
+          find dist -name "index.html" || true
 
-      - name: Crear wrapper Electron
+      - name: Preparar estructura dist/public
         working-directory: project
         shell: bash
         run: |
-          pnpm add -D electron electron-builder cross-env
+          # Asegurar que existe dist/public/index.html
+          if [ -f "dist/public/index.html" ]; then
+            echo "OK: dist/public/index.html existe"
+          elif [ -f "dist/index.html" ]; then
+            echo "Moviendo dist/* a dist/public/"
+            mkdir -p dist/public
+            cp -r dist/* dist/public/ 2>/dev/null || true
+            # Evitar recursión
+            rm -rf dist/public/public 2>/dev/null || true
+          else
+            echo "ERROR: No se encontró index.html"
+            find dist -type f | head -50
+            exit 1
+          fi
+          ls -la dist/public/ | head -20
 
+      - name: Instalar Electron + electron-builder
+        working-directory: project
+        shell: bash
+        run: |
+          pnpm add -D electron@33 electron-builder@25
+
+      - name: Crear Electron main + config
+        working-directory: project
+        shell: bash
+        run: |
           cat > electron-main.js << 'EOF'
           const { app, BrowserWindow, shell } = require('electron');
           const path = require('path');
@@ -79,7 +107,8 @@ jobs:
             });
 
             const indexPath = path.join(__dirname, 'dist', 'public', 'index.html');
-            win.loadFile(indexPath).catch(() => {
+            win.loadFile(indexPath).catch((err) => {
+              console.error('Error cargando index:', err);
               win.loadFile(path.join(__dirname, 'dist', 'index.html'));
             });
 
@@ -100,64 +129,47 @@ jobs:
           });
           EOF
 
-          cat > electron-package.json << 'EOF'
-          {
-            "name": "codemind-nova",
-            "version": "1.0.0",
-            "description": "CodeMind Nova - Companion AI 3D",
-            "main": "electron-main.js",
-            "author": "CodeMind",
-            "license": "MIT",
-            "build": {
-              "appId": "com.codemind.nova",
-              "productName": "CodeMind Nova",
-              "directories": { "output": "release" },
-              "files": ["electron-main.js", "dist/**/*", "package.json"],
-              "win": {
-                "target": [
-                  { "target": "nsis", "arch": ["x64"] },
-                  { "target": "portable", "arch": ["x64"] }
-                ],
-                "artifactName": "CodeMind-Nova-${version}-${arch}.${ext}"
-              },
-              "nsis": {
-                "oneClick": false,
-                "allowToChangeInstallationDirectory": true,
-                "createDesktopShortcut": true
-              },
-              "portable": {
-                "artifactName": "CodeMind-Nova-Portable.exe"
-              }
+          # Actualizar package.json para electron-builder
+          node << 'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.main = 'electron-main.js';
+          pkg.build = {
+            appId: 'com.codemind.nova',
+            productName: 'CodeMind Nova',
+            directories: { output: 'release' },
+            files: [
+              'electron-main.js',
+              'dist/**/*',
+              'package.json'
+            ],
+            win: {
+              target: [
+                { target: 'portable', arch: ['x64'] },
+                { target: 'nsis', arch: ['x64'] }
+              ],
+              artifactName: 'CodeMind-Nova-${version}-${arch}.${ext}'
+            },
+            nsis: {
+              oneClick: false,
+              allowToChangeInstallationDirectory: true,
+              createDesktopShortcut: true
+            },
+            portable: {
+              artifactName: 'CodeMind-Nova-Portable.exe'
             }
-          }
-          EOF
-
-          cp package.json package.json.bak
-          node -e "
-            const pkg = require('./package.json');
-            const ePkg = require('./electron-package.json');
-            pkg.main = ePkg.main;
-            pkg.build = ePkg.build;
-            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
+          };
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          console.log('package.json actualizado para electron-builder');
+          NODE
 
       - name: Construir EXE
         working-directory: project
         shell: bash
         run: |
-          if [ ! -d "dist/public" ] && [ -f "dist/index.html" ]; then
-            mkdir -p dist/public
-            cp -r dist/* dist/public/ 2>/dev/null || true
-          fi
-
-          echo "Contenido de dist:"
-          ls -la dist/ || true
-          ls -la dist/public/ || true
-
           npx electron-builder --win --x64 --publish never
-
           echo "Archivos generados:"
-          find release -type f -ls || true
+          find release -type f -ls || dir release /s
 
       - name: Subir EXE
         uses: actions/upload-artifact@v4
@@ -167,7 +179,7 @@ jobs:
             project/release/*.exe
             project/release/**/*.exe
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Resumen
         shell: bash
