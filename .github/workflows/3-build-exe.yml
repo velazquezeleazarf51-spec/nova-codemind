@@ -1,0 +1,180 @@
+# ============================================================
+# 3. Build EXE Windows (Electron)
+# ============================================================
+# Descomprime el ZIP y genera el .exe de Windows.
+# ============================================================
+
+name: 3 - Build EXE Windows
+
+on:
+  workflow_dispatch:          # Ejecutar manualmente
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.18.0'
+
+jobs:
+  build-exe:
+    name: Generar EXE
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Descomprimir proyecto
+        shell: bash
+        run: |
+          echo "Descomprimiendo nova-codemind-completo-v2.zip..."
+          unzip -q nova-codemind-completo-v2.zip -d project
+          ls -la project/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Instalar dependencias
+        working-directory: project
+        shell: bash
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build estático del frontend
+        working-directory: project
+        shell: bash
+        run: pnpm build:static || pnpm exec vite build
+
+      - name: Crear wrapper Electron
+        working-directory: project
+        shell: bash
+        run: |
+          pnpm add -D electron electron-builder cross-env
+
+          cat > electron-main.js << 'EOF'
+          const { app, BrowserWindow, shell } = require('electron');
+          const path = require('path');
+
+          app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
+
+          function createWindow() {
+            const win = new BrowserWindow({
+              width: 1280,
+              height: 800,
+              minWidth: 900,
+              minHeight: 600,
+              title: 'CodeMind Nova',
+              backgroundColor: '#070817',
+              webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                webSecurity: true,
+              },
+              autoHideMenuBar: true,
+            });
+
+            const indexPath = path.join(__dirname, 'dist', 'public', 'index.html');
+            win.loadFile(indexPath).catch(() => {
+              win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+            });
+
+            win.webContents.setWindowOpenHandler(({ url }) => {
+              shell.openExternal(url);
+              return { action: 'deny' };
+            });
+          }
+
+          app.whenReady().then(createWindow);
+
+          app.on('window-all-closed', () => {
+            if (process.platform !== 'darwin') app.quit();
+          });
+
+          app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) createWindow();
+          });
+          EOF
+
+          cat > electron-package.json << 'EOF'
+          {
+            "name": "codemind-nova",
+            "version": "1.0.0",
+            "description": "CodeMind Nova - Companion AI 3D",
+            "main": "electron-main.js",
+            "author": "CodeMind",
+            "license": "MIT",
+            "build": {
+              "appId": "com.codemind.nova",
+              "productName": "CodeMind Nova",
+              "directories": { "output": "release" },
+              "files": ["electron-main.js", "dist/**/*", "package.json"],
+              "win": {
+                "target": [
+                  { "target": "nsis", "arch": ["x64"] },
+                  { "target": "portable", "arch": ["x64"] }
+                ],
+                "artifactName": "CodeMind-Nova-${version}-${arch}.${ext}"
+              },
+              "nsis": {
+                "oneClick": false,
+                "allowToChangeInstallationDirectory": true,
+                "createDesktopShortcut": true
+              },
+              "portable": {
+                "artifactName": "CodeMind-Nova-Portable.exe"
+              }
+            }
+          }
+          EOF
+
+          cp package.json package.json.bak
+          node -e "
+            const pkg = require('./package.json');
+            const ePkg = require('./electron-package.json');
+            pkg.main = ePkg.main;
+            pkg.build = ePkg.build;
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+
+      - name: Construir EXE
+        working-directory: project
+        shell: bash
+        run: |
+          if [ ! -d "dist/public" ] && [ -f "dist/index.html" ]; then
+            mkdir -p dist/public
+            cp -r dist/* dist/public/ 2>/dev/null || true
+          fi
+
+          echo "Contenido de dist:"
+          ls -la dist/ || true
+          ls -la dist/public/ || true
+
+          npx electron-builder --win --x64 --publish never
+
+          echo "Archivos generados:"
+          find release -type f -ls || true
+
+      - name: Subir EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-codemind-exe
+          path: |
+            project/release/*.exe
+            project/release/**/*.exe
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Resumen
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "  EXE generado correctamente"
+          echo "========================================"
+          echo "Descarga el artifact: nova-codemind-exe"
+          echo "Archivos: CodeMind-Nova-Portable.exe + instalador"
+          echo "========================================"

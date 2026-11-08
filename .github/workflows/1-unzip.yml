@@ -1,0 +1,53 @@
+# ============================================================
+# 1. Descomprimir el ZIP del proyecto
+# ============================================================
+# Extrae nova-codemind-completo-v2.zip y sube el código
+# descomprimido como artifact para usarlo en otros workflows.
+# ============================================================
+
+name: 1 - Descomprimir ZIP
+
+on:
+  workflow_dispatch:          # Ejecutar manualmente
+  push:
+    branches: [main]
+    paths:
+      - 'nova-codemind-completo-v2.zip'
+
+jobs:
+  unzip:
+    name: Descomprimir proyecto
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Descomprimir ZIP
+        run: |
+          echo "Descomprimiendo nova-codemind-completo-v2.zip..."
+          unzip -q nova-codemind-completo-v2.zip -d project
+          echo ""
+          echo "Contenido extraído:"
+          ls -la project/
+          echo ""
+          echo "Estructura principal:"
+          find project -maxdepth 2 -type d | head -40
+
+      - name: Subir código descomprimido
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-source
+          path: project/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Resumen
+        run: |
+          echo "========================================"
+          echo "  ZIP descomprimido correctamente"
+          echo "========================================"
+          echo "Artifact: nova-source"
+          echo "Úsalo en los workflows de APK y EXE"
+          echo "========================================"
