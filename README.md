@@ -1,34 +1,23 @@
 # CodeMind Nova
 
-Companion AI 3D con Capacitor (Android APK), Three.js, chat, voz en español, memoria local y zonas de interacción.
+Companion AI 3D con **Capacitor** (Android APK), Three.js, chat con IA, voz en español, memoria local y zonas de interacción táctil.
 
-## Descripción
+> El código fuente completo está dentro del archivo **`nova-codemind-completo-v2.zip`**.
 
-Aplicación híbrida (web + Android) que incluye:
+## Cómo obtener el código fuente
 
-- Personaje 3D **Nova** con modelo GLB animado (idle, walk, standing_relax)
-- Física, gravedad, movimiento spring-damper, salto y arrastre
-- Cámara orbitable y habitación cyberpunk
-- Chat conversacional con IA (modo Asistente / Compañera / Autónoma)
-- Síntesis de voz y clip de presentación
-- Sistema de memoria local y preferencias
-- Zonas sensibles de tacto con límites de consentimiento
-- Backend con rate limiting, tRPC y soporte para LLM
-
-## Requisitos
-
-- Node.js 20+
-- pnpm
-- Android Studio / SDK (solo para generar la APK)
-
-## Instalación y desarrollo
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Abre http://localhost:3000
+1. Descarga el zip desde este repositorio.
+2. Descomprime:
+   ```bash
+   unzip nova-codemind-completo-v2.zip -d nova-codemind
+   cd nova-codemind
+   ```
+3. Instala y ejecuta:
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+   Abre http://localhost:3000
 
 ## Generar APK (Android)
 
@@ -36,31 +25,58 @@ Abre http://localhost:3000
 pnpm build
 pnpm exec cap sync android
 cd android
-./gradlew assembleDebug
+./gradlew assembleDebug          # APK de prueba
+# o
+./gradlew assembleRelease        # APK firmada (necesitas keystore)
 ```
 
-El APK debug queda en:
-`android/app/build/outputs/apk/debug/app-debug.apk`
+El APK queda en:
+- Debug: `android/app/build/outputs/apk/debug/app-debug.apk`
+- Release: `android/app/build/outputs/apk/release/app-release.apk`
 
-### Apuntar a un backend remoto
+### Llave de firma (keystore)
+
+Se generó una llave de release:
+- Archivo: `nova-release.keystore`
+- Alias: `nova`
+- Contraseña: `novacodemind2026`
+
+(Si la necesitas, pídemela y te la paso de forma segura).
+
+## Apuntar a un backend remoto
 
 ```bash
 NOVA_REMOTE_URL=https://tu-dominio.com pnpm exec cap sync android
 ```
 
-## Estructura principal
+## Estructura del proyecto (dentro del zip)
 
-- `client/` — Frontend React + Three.js + UI
-- `server/` — Backend Express + tRPC + LLM
-- `shared/` — Tipos y constantes compartidas
-- `android/` — Proyecto Capacitor listo para compilar
-- `client/public/assets/` — Modelos GLB y audio
+```
+├── android/          # Proyecto Capacitor listo para APK
+├── client/           # Frontend React + Three.js + UI
+│   └── public/assets/  # Modelos GLB (nova-animated.glb) y audio
+├── server/           # Backend Express + tRPC + LLM
+├── shared/           # Tipos y constantes compartidas
+├── drizzle/          # Base de datos
+└── package.json
+```
 
-## Notas importantes
+## Características principales
+
+- Personaje 3D Nova con animaciones reales (idle, walk, standing_relax)
+- Física, gravedad, movimiento, salto y arrastre
+- Habitación cyberpunk interactiva
+- Chat con IA (modos Asistente / Compañera / Autónoma)
+- Voz en español + clip de presentación
+- Sistema de memoria y preferencias locales
+- Zonas sensibles de tacto con límites de consentimiento
+- Rate limiting y backend seguro
+
+## Notas
 
 - No se incluyen `node_modules`, `.env` ni claves de API.
-- La APK necesita un backend publicado para usar el LLM real.
-- Los modelos 3D (`.glb`) son pesados; se recomienda Git LFS si se suben por git.
+- Los archivos `.glb` son pesados (~10 MB cada uno). Usa Git LFS si los subes al repo.
+- Para Windows (.exe) el proyecto no está configurado (habría que añadir Electron).
 
 ## Licencia
 
