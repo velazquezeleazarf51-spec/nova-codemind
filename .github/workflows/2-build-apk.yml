@@ -12,7 +12,7 @@ on:
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.18.0'
-  JAVA_VERSION: '17'
+  JAVA_VERSION: '21'
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
   NOVA_REMOTE_URL: ''
 
@@ -42,7 +42,7 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - name: Setup Java 17
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -61,19 +61,18 @@ jobs:
         run: |
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
 
-          # Aceptar todas las licencias
           yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses >/dev/null 2>&1 || true
 
-          # Instalar componentes necesarios
           sdkmanager --sdk_root=$ANDROID_HOME \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
             "platforms;android-35" \
-            "build-tools;35.0.0"
+            "build-tools;35.0.0" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
 
           echo "SDK instalado en $ANDROID_HOME"
-          ls -la $ANDROID_HOME/
 
       - name: Configurar variables de entorno Android
         run: |
